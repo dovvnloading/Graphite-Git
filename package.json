@@ -1,8 +1,11 @@
+--- START OF FILE package.json ---
+
 {
   "name": "graphite-git",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "homepage": "https://dovvnloading.github.io/Graphite-Git", 
   "scripts": {
     "dev": "vite",
     "build": "vite build",
