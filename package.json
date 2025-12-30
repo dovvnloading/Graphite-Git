@@ -1,5 +1,3 @@
---- START OF FILE package.json ---
-
 {
   "name": "graphite-git",
   "private": true,
