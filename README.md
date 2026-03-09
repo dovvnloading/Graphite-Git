@@ -30,7 +30,7 @@
 
 ## Overview
 
-**Graphite:Git** is a high-performance, browser-based GitHub management tool designed for developers who demand security, efficiency, and advanced capabilities. It operates entirely on the client side, meaning your GitHub token and API keys never leave your browser.
+**Graphite:Git** A secure, local-first GitHub client featuring an integrated AI engineering agent. Manage repositories, edit code, and streamline your entire developer workflow from a single, unified interface.
 
 From a feature-rich dashboard and a complete in-browser IDE to an AI agent that can read, write, and refactor your code, Graphite provides a comprehensive toolkit for modern software development.
 
