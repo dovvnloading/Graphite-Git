@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { AgentContextType, AgentContextState, ChatMessage, ToolCall, AgentContextSettings } from '../types';
 import { GeminiService } from '../services/geminiService';
 import { GitHubService } from '../services/githubService';
@@ -35,14 +35,19 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
   // API Key Management
   const [geminiApiKey, setGeminiApiKeyInternal] = useState(localStorage.getItem('gemini_api_key') || '');
   const [gemini, setGemini] = useState<GeminiService | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (geminiApiKey) {
       setGemini(new GeminiService(geminiApiKey));
     } else {
       // Fallback to env if available, or null
-      if (process.env.API_KEY) {
-           setGemini(new GeminiService(process.env.API_KEY));
+      if (import.meta.env.VITE_API_KEY) {
+           setGemini(new GeminiService(import.meta.env.VITE_API_KEY));
       } else {
            setGemini(null);
       }
@@ -145,7 +150,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
       timestamp: Date.now()
     };
     
-    const updatedMessages = [...messages, newUserMsg];
+    const updatedMessages = [...messagesRef.current, newUserMsg];
     setMessages(updatedMessages);
     setIsThinking(true);
 
@@ -212,6 +217,13 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
     }
   };
 
+  const decodeGitHubContent = (encoded: string) => {
+      const clean = encoded.replace(/\s/g, '');
+      const binary = window.atob(clean);
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  };
+
   const executeTool = async (tool: ToolCall) => {
       if (!service) return { result: "Error: No GitHub service connection." };
       
@@ -221,7 +233,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
       // Infer context if missing
       const owner = args.owner || contextState.currentRepo?.owner.login;
       const repo = args.repo || contextState.currentRepo?.name;
-      const path = args.path || contextState.currentPath || '';
+      const path = args.path || contextState.currentFile?.path || contextState.currentPath || '';
 
       if (!owner || !repo) {
           return { result: "Error: Context (owner/repo) is missing and not provided." };
@@ -238,7 +250,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
                   // @ts-ignore
                   if (file.content) {
                       // @ts-ignore
-                       result = decodeURIComponent(escape(window.atob(file.content.replace(/\s/g, ''))));
+                       result = decodeGitHubContent(file.content);
                   } else {
                       result = "File is empty or a directory.";
                   }
@@ -266,7 +278,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
                   if (!fileObj.content) throw new Error("File is empty or not found");
                   
                   // @ts-ignore
-                  const currentContent = decodeURIComponent(escape(window.atob(fileObj.content.replace(/\s/g, ''))));
+                  const currentContent = decodeGitHubContent(fileObj.content);
                   
                   // 2. Perform replacement
                   // Use simple string replace. The AI should provide the exact block to replace.
@@ -304,20 +316,31 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
     if (!pendingToolCall) return;
     if (!gemini) return;
     
-    // 1. Mark as executed in UI
+    const approvedTool = pendingToolCall;
+
+    // 1. Mark as executed in UI and collect next pending tool from same model response
+    let nextPendingFromBatch: ToolCall | null = null;
     setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (!last || !last.toolCalls) return prev;
-        const updatedTools = last.toolCalls.map(t => t.id === pendingToolCall.id ? { ...t, status: 'executed' as const } : t);
-        // @ts-ignore
-        return [...prev.slice(0, -1), { ...last, toolCalls: updatedTools }];
+        const lastModelIndex = [...prev].reverse().findIndex(m => m.role === 'model' && m.toolCalls?.length);
+        if (lastModelIndex === -1) return prev;
+
+        const absoluteIndex = prev.length - 1 - lastModelIndex;
+        const target = prev[absoluteIndex];
+        if (!target.toolCalls) return prev;
+
+        const updatedTools = target.toolCalls.map(t => t.id === approvedTool.id ? { ...t, status: 'executed' as const } : t);
+        nextPendingFromBatch = updatedTools.find(t => t.status === 'pending') || null;
+
+        const next = [...prev];
+        next[absoluteIndex] = { ...target, toolCalls: updatedTools };
+        return next;
     });
 
     setPendingToolCall(null);
     setIsThinking(true);
 
     // 2. Execute
-    const { result } = await executeTool(pendingToolCall);
+    const { result } = await executeTool(approvedTool);
 
     // 3. Add Function Response to History
     const functionResponseMsg: ChatMessage = {
@@ -325,13 +348,19 @@ export const AgentProvider: React.FC<{ children: React.ReactNode; service: GitHu
         role: 'function',
         timestamp: Date.now(),
         toolResponse: {
-            name: pendingToolCall.name,
+            name: approvedTool.name,
             response: { result }
         }
     };
 
-    const updatedMessages = [...messages, functionResponseMsg];
+    const updatedMessages = [...messagesRef.current, functionResponseMsg];
     setMessages(updatedMessages);
+
+    if (nextPendingFromBatch) {
+        setPendingToolCall(nextPendingFromBatch);
+        setIsThinking(false);
+        return;
+    }
 
     // 4. Send back to model to get final confirmation text
     try {
