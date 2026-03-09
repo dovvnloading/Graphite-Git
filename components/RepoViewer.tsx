@@ -5,7 +5,6 @@ import { GitHubService } from '../services/githubService';
 import { useAgent } from './AgentProvider';
 import { Folder, FileCode, File, ArrowLeft, ChevronRight, Copy, Download, Loader2, Home, FileText, Image as ImageIcon, Edit2, Save, X, BrainCircuit, Eye, Code, RefreshCw, Plus, CornerUpLeft, Check, Sparkles, MessageSquarePlus, Zap, Wand2, Menu, FolderOpen, FileWarning, ShieldCheck, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -712,20 +711,19 @@ ${contextMenu.selection}
                                             src={previewBlobUrl}
                                             className="w-full h-full border-none"
                                             title="HTML Preview (Safe)"
-                                            sandbox="allow-scripts allow-forms allow-popups"
+                                            sandbox="allow-scripts"
                                         />
                                     ) : (
                                         <iframe
                                             srcDoc={fileContent || ''}
                                             className="w-full h-full border-none"
                                             title="HTML Preview (Unsafe)"
-                                            sandbox="allow-scripts allow-forms allow-popups"
+                                            sandbox="allow-scripts"
                                         />
                                     )
                                 ) : (
                                     <div className="prose prose-sm max-w-none p-8 text-black bg-white min-h-full">
                                         <ReactMarkdown 
-                                            rehypePlugins={[rehypeRaw]} 
                                             remarkPlugins={[remarkGfm]}
                                         >
                                             {fileContent || ''}
